@@ -107,16 +107,22 @@ class _DramaDetailPageState extends State<DramaDetailPage> {
   }
 
   Widget _buildCoverHeader(Drama drama) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF3A1E5C), Color(0xFF0F0F10)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+    return Hero(
+      tag: 'drama_cover_${drama.id}',
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF2A1B3D + (drama.id * 1711) % 0x333333),
+              const Color(0xFF0F0F10),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
         ),
-      ),
-      child: const Center(
-        child: Icon(Icons.movie_filter, size: 80, color: Colors.white24),
+        child: const Center(
+          child: Icon(Icons.movie_filter, size: 80, color: Colors.white24),
+        ),
       ),
     );
   }

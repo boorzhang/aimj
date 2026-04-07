@@ -22,7 +22,12 @@ class DramaCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _buildCover()),
+              Expanded(
+                child: Hero(
+                  tag: 'drama_cover_${drama.id}',
+                  child: _buildCover(),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
                 child: Text(

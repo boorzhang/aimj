@@ -9,6 +9,7 @@ import '../pages/login/login_page.dart';
 import '../pages/home/home_page.dart';
 import '../pages/search/search_page.dart';
 import '../pages/player/player_page.dart';
+import '../pages/splash/splash_page.dart';
 import '../pages/profile/profile_page.dart';
 import '../pages/shell/main_shell.dart';
 import '../pages/task/task_center_page.dart';
@@ -21,8 +22,13 @@ class AppRouter {
   AppRouter._();
 
   static final GoRouter router = GoRouter(
-    initialLocation: '/home',
+    initialLocation: '/splash',
     routes: [
+      GoRoute(
+        path: '/splash',
+        name: 'splash',
+        builder: (_, __) => const SplashPage(),
+      ),
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),
         routes: [

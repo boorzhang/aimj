@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -17,15 +18,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/episode_selector.dart';
 import '../../widgets/reward_dialog.dart';
 
-/// 播放页 - 9:16 沉浸式短剧播放
-///
-/// 核心能力（docs §3.3）：
-/// - 自动下一集（片尾 3 秒倒计时可取消）
-/// - 点击切换播放/暂停
-/// - 底部进度条 + 时间文字
-/// - 断点续播
-/// - 每 3 集插屏广告
-/// - 锁集激励解锁
+/// 播放页 - 抖音/红果风格上下滑切集
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key, required this.dramaId, required this.episode});
 
@@ -42,26 +35,38 @@ class _PlayerPageState extends State<PlayerPage> {
   final _pacing = InterstitialPacing();
   late final RewardUnlockManager _unlock = RewardUnlockManager(_ad);
 
-  VideoPlayerController? _controller;
-  Episode? _episode;
-  Drama? _drama; // 用于历史记录 + 选集抽屉
+  Drama? _drama;
+  late PageController _pageCtl;
   int _currentEp = 1;
   int _episodesWatchedInSession = 0;
+
+  // 当前播放器状态
+  VideoPlayerController? _controller;
+  Episode? _episode;
   bool _loading = true;
 
   // 片尾倒计时
   Timer? _countdownTimer;
   int? _countdownSeconds;
   bool _transitioning = false;
-
-  // 节流保存断点
   int _lastSavedSec = -1;
+
+  // 双击点赞动效
+  final List<_HeartAnim> _hearts = [];
 
   @override
   void initState() {
     super.initState();
     _currentEp = widget.episode;
-    _loadAndPlay(_currentEp);
+    _pageCtl = PageController(initialPage: _currentEp - 1);
+    _initDrama();
+  }
+
+  Future<void> _initDrama() async {
+    try {
+      _drama = await _dramaService.getDetail(widget.dramaId);
+    } catch (_) {}
+    await _loadAndPlay(_currentEp);
   }
 
   Future<void> _loadAndPlay(int ep) async {
@@ -70,13 +75,6 @@ class _PlayerPageState extends State<PlayerPage> {
       _countdownSeconds = null;
       _transitioning = false;
     });
-
-    // 首次进入时懒加载剧集详情，用于历史 + 选集抽屉
-    try {
-      _drama ??= await _dramaService.getDetail(widget.dramaId);
-    } catch (e) {
-      debugPrint('[Player] getDetail error: $e');
-    }
 
     final episode = await _dramaService.getEpisode(widget.dramaId, ep);
 
@@ -95,14 +93,12 @@ class _PlayerPageState extends State<PlayerPage> {
       AnalyticsService.instance.unlockSuccess(widget.dramaId, ep);
     }
 
-    // 释放旧播放器
     await _controller?.dispose();
     final controller = VideoPlayerController.networkUrl(Uri.parse(episode.videoUrl));
     await controller.initialize();
     controller.addListener(_onTick);
     await controller.play();
 
-    // 断点续播
     final resume = PlayerService.instance.resumePosition(widget.dramaId, ep);
     if (resume > 0) {
       await controller.seekTo(Duration(seconds: resume));
@@ -116,7 +112,6 @@ class _PlayerPageState extends State<PlayerPage> {
     AnalyticsService.instance.episodePlay(widget.dramaId, ep);
     PlayerService.instance.recordEpisode(widget.dramaId, ep);
 
-    // 写入本地观看历史
     final drama = _drama;
     if (drama != null) {
       await LocalStore.instance.recordWatch(drama, ep);
@@ -140,14 +135,12 @@ class _PlayerPageState extends State<PlayerPage> {
     final dur = c.value.duration;
     if (dur <= Duration.zero) return;
 
-    // 节流保存断点（按秒）
     final sec = pos.inSeconds;
     if (sec != _lastSavedSec) {
       _lastSavedSec = sec;
       PlayerService.instance.saveResumePosition(widget.dramaId, _currentEp, sec);
     }
 
-    // 片尾 3 秒触发倒计时
     final remaining = dur - pos;
     if (_countdownSeconds == null &&
         c.value.isPlaying &&
@@ -156,7 +149,6 @@ class _PlayerPageState extends State<PlayerPage> {
       _startCountdown();
     }
 
-    // 播放完成 → 自动下一集
     if (pos >= dur) {
       _transitioning = true;
       _countdownTimer?.cancel();
@@ -171,10 +163,7 @@ class _PlayerPageState extends State<PlayerPage> {
     if (mounted) setState(() {});
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
+      if (!mounted) { t.cancel(); return; }
       setState(() {
         if (_countdownSeconds != null && _countdownSeconds! > 1) {
           _countdownSeconds = _countdownSeconds! - 1;
@@ -206,6 +195,56 @@ class _PlayerPageState extends State<PlayerPage> {
     });
   }
 
+  /// 双击点赞
+  void _onDoubleTap(TapDownDetails details) {
+    _togglePlayPause(); // 先确保在播放
+    final c = _controller;
+    if (c != null && !c.value.isPlaying) c.play();
+    setState(() {
+      _hearts.add(_HeartAnim(
+        id: DateTime.now().microsecondsSinceEpoch,
+        x: details.localPosition.dx,
+        y: details.localPosition.dy,
+      ));
+    });
+    // 3 秒后移除
+    Future.delayed(const Duration(seconds: 1), () {
+      if (!mounted) return;
+      setState(() {
+        if (_hearts.isNotEmpty) _hearts.removeAt(0);
+      });
+    });
+  }
+
+  Future<void> _goNextEpisode() async {
+    _episodesWatchedInSession++;
+    if (_pacing.shouldShow(_episodesWatchedInSession)) {
+      await _ad.showInterstitialAd(AdScene.interstitialAfterEp3);
+      AnalyticsService.instance.adInterstitialShow(AdScene.interstitialAfterEp3);
+      _pacing.markShown();
+    }
+    final next = _episode?.nextEpisode ?? (_currentEp + 1);
+    AnalyticsService.instance.autoNext(widget.dramaId, next);
+    // 动画滑到下一页
+    if (_pageCtl.hasClients) {
+      _pageCtl.animateToPage(
+        next - 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+    await _loadAndPlay(next);
+  }
+
+  void _onPageChanged(int pageIndex) {
+    final ep = pageIndex + 1;
+    if (ep == _currentEp) return;
+    _cancelCountdown();
+    _transitioning = true;
+    _controller?.removeListener(_onTick);
+    _loadAndPlay(ep);
+  }
+
   Future<void> _openEpisodeSheet() async {
     final drama = _drama;
     if (drama == null || drama.episodes.isEmpty) return;
@@ -227,12 +266,10 @@ class _PlayerPageState extends State<PlayerPage> {
           maxChildSize: 0.92,
           builder: (context, scrollController) {
             return Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 const SizedBox(height: 8),
                 Container(
-                  width: 36,
-                  height: 4,
+                  width: 36, height: 4,
                   decoration: BoxDecoration(
                     color: AppColors.divider,
                     borderRadius: BorderRadius.circular(2),
@@ -242,12 +279,7 @@ class _PlayerPageState extends State<PlayerPage> {
                   padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('选集',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        )),
+                    child: Text('选集', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                   ),
                 ),
                 Expanded(
@@ -270,25 +302,13 @@ class _PlayerPageState extends State<PlayerPage> {
     if (picked != null && picked != _currentEp) {
       _transitioning = true;
       _controller?.removeListener(_onTick);
+      if (_pageCtl.hasClients) {
+        _pageCtl.jumpToPage(picked - 1);
+      }
       await _loadAndPlay(picked);
     } else {
       _controller?.play();
     }
-  }
-
-  Future<void> _goNextEpisode() async {
-    _episodesWatchedInSession++;
-
-    // 每 3 集插屏
-    if (_pacing.shouldShow(_episodesWatchedInSession)) {
-      await _ad.showInterstitialAd(AdScene.interstitialAfterEp3);
-      AnalyticsService.instance.adInterstitialShow(AdScene.interstitialAfterEp3);
-      _pacing.markShown();
-    }
-
-    final next = _episode?.nextEpisode ?? (_currentEp + 1);
-    AnalyticsService.instance.autoNext(widget.dramaId, next);
-    await _loadAndPlay(next);
   }
 
   @override
@@ -296,45 +316,61 @@ class _PlayerPageState extends State<PlayerPage> {
     _countdownTimer?.cancel();
     _controller?.removeListener(_onTick);
     _controller?.dispose();
+    _pageCtl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final totalEps = _drama?.episodeCount ?? 60;
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Stack(
           children: [
-            // 视频层 + 点击切换播放
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _togglePlayPause,
-                child: _buildVideoLayer(),
-              ),
+            // 竖向 PageView 上下滑切集
+            PageView.builder(
+              controller: _pageCtl,
+              scrollDirection: Axis.vertical,
+              itemCount: totalEps,
+              onPageChanged: _onPageChanged,
+              itemBuilder: (context, index) {
+                // 只有当前页渲染视频，其它页面显示黑色
+                if (index + 1 != _currentEp) {
+                  return Container(
+                    color: Colors.black,
+                    child: Center(
+                      child: Text('第 ${index + 1} 集',
+                          style: const TextStyle(color: Colors.white38, fontSize: 16)),
+                    ),
+                  );
+                }
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _togglePlayPause,
+                  onDoubleTapDown: _onDoubleTap,
+                  onDoubleTap: () {}, // 需要声明 onDoubleTap 才能触发 onDoubleTapDown
+                  child: _buildVideoLayer(),
+                );
+              },
             ),
 
             // 顶部栏
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _buildTopBar(),
-            ),
+            Positioned(top: 0, left: 0, right: 0, child: _buildTopBar()),
 
-            // 片尾倒计时浮层
+            // 倒计时浮层
             if (_countdownSeconds != null) _buildCountdownOverlay(),
 
-            // 播放暂停浮层（暂停时显示中央播放图标）
+            // 暂停图标
             if (_controller != null && !_controller!.value.isPlaying && !_loading)
               _buildPausedIndicator(),
 
+            // 双击爱心
+            ..._hearts.map((h) => _HeartWidget(key: ValueKey(h.id), heart: h)),
+
             // 底部：进度条 + 操作行
             Positioned(
-              left: 0,
-              right: 0,
-              bottom: 16,
+              left: 0, right: 0, bottom: 16,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -358,7 +394,6 @@ class _PlayerPageState extends State<PlayerPage> {
     if (!c.value.isInitialized) {
       return const Center(child: CircularProgressIndicator(color: AppColors.primary));
     }
-    // 全屏铺满（FittedBox.cover），模拟短剧 9:16 沉浸式体验
     return SizedBox.expand(
       child: FittedBox(
         fit: BoxFit.cover,
@@ -375,10 +410,7 @@ class _PlayerPageState extends State<PlayerPage> {
     return const Center(
       child: IgnorePointer(
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.black45,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
           child: Padding(
             padding: EdgeInsets.all(16),
             child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 56),
@@ -401,24 +433,12 @@ class _PlayerPageState extends State<PlayerPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  '下一集',
-                  style: TextStyle(color: Colors.white, fontSize: 14),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${_countdownSeconds}s',
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 42,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                const Icon(Icons.arrow_upward, color: Colors.white54, size: 20),
                 const SizedBox(height: 4),
-                const Text(
-                  '点击画面取消',
-                  style: TextStyle(color: Colors.white70, fontSize: 11),
-                ),
+                const Text('上滑切下一集', style: TextStyle(color: Colors.white, fontSize: 14)),
+                const SizedBox(height: 6),
+                Text('${_countdownSeconds}s',
+                    style: const TextStyle(color: AppColors.primary, fontSize: 42, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
@@ -429,9 +449,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Widget _buildProgressBar() {
     final c = _controller;
-    if (c == null || !c.value.isInitialized) {
-      return const SizedBox(height: 24);
-    }
+    if (c == null || !c.value.isInitialized) return const SizedBox(height: 24);
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: c,
       builder: (context, value, _) {
@@ -445,8 +463,7 @@ class _PlayerPageState extends State<PlayerPage> {
               SizedBox(
                 height: 16,
                 child: VideoProgressIndicator(
-                  c,
-                  allowScrubbing: true,
+                  c, allowScrubbing: true,
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   colors: const VideoProgressColors(
                     playedColor: AppColors.primary,
@@ -459,10 +476,8 @@ class _PlayerPageState extends State<PlayerPage> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(_fmtDuration(pos),
-                      style: const TextStyle(color: Colors.white, fontSize: 11)),
-                  Text(_fmtDuration(dur),
-                      style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                  Text(_fmtDuration(pos), style: const TextStyle(color: Colors.white, fontSize: 11)),
+                  Text(_fmtDuration(dur), style: const TextStyle(color: Colors.white70, fontSize: 11)),
                 ],
               ),
             ],
@@ -475,9 +490,7 @@ class _PlayerPageState extends State<PlayerPage> {
   static String _fmtDuration(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    if (d.inHours > 0) {
-      return '${d.inHours}:$m:$s';
-    }
+    if (d.inHours > 0) return '${d.inHours}:$m:$s';
     return '$m:$s';
   }
 
@@ -487,30 +500,15 @@ class _PlayerPageState extends State<PlayerPage> {
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           colors: [Colors.black54, Colors.transparent],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topCenter, end: Alignment.bottomCenter,
         ),
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => context.pop(),
-          ),
-          Expanded(
-            child: Text(
-              '第 $_currentEp 集',
-              style: const TextStyle(color: Colors.white, fontSize: 16),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.favorite_border, color: Colors.white),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.share, color: Colors.white),
-            onPressed: () {},
-          ),
+          IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => context.pop()),
+          Expanded(child: Text('第 $_currentEp 集', style: const TextStyle(color: Colors.white, fontSize: 16))),
+          IconButton(icon: const Icon(Icons.favorite_border, color: Colors.white), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.share, color: Colors.white), onPressed: () {}),
         ],
       ),
     );
@@ -522,48 +520,100 @@ class _PlayerPageState extends State<PlayerPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _ActionButton(
-            icon: Icons.skip_next,
-            label: '下一集',
-            onTap: () {
-              _cancelCountdown();
-              _transitioning = true;
-              _controller?.removeListener(_onTick);
-              _goNextEpisode();
-            },
-            highlight: true,
-          ),
-          _ActionButton(
-            icon: Icons.list,
-            label: '选集',
-            onTap: _openEpisodeSheet,
-          ),
-          _ActionButton(
-            icon: Icons.comment_outlined,
-            label: '评论',
-            onTap: () {},
-          ),
-          _ActionButton(
-            icon: Icons.share_outlined,
-            label: '分享',
-            onTap: () {
-              AnalyticsService.instance.shareDrama(widget.dramaId);
-            },
-          ),
+          _ActionButton(icon: Icons.skip_next, label: '下一集', highlight: true, onTap: () {
+            _cancelCountdown();
+            _transitioning = true;
+            _controller?.removeListener(_onTick);
+            _goNextEpisode();
+          }),
+          _ActionButton(icon: Icons.list, label: '选集', onTap: _openEpisodeSheet),
+          _ActionButton(icon: Icons.comment_outlined, label: '评论', onTap: () {}),
+          _ActionButton(icon: Icons.share_outlined, label: '分享', onTap: () {
+            AnalyticsService.instance.shareDrama(widget.dramaId);
+          }),
         ],
       ),
     );
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.highlight = false,
-  });
+// --- 双击爱心动效 ---
 
+class _HeartAnim {
+  final int id;
+  final double x;
+  final double y;
+  _HeartAnim({required this.id, required this.x, required this.y});
+}
+
+class _HeartWidget extends StatefulWidget {
+  final _HeartAnim heart;
+  const _HeartWidget({super.key, required this.heart});
+
+  @override
+  State<_HeartWidget> createState() => _HeartWidgetState();
+}
+
+class _HeartWidgetState extends State<_HeartWidget> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctl;
+  late final Animation<double> _scale;
+  late final Animation<double> _opacity;
+  late final Animation<double> _translateY;
+  final double _rotation = (Random().nextDouble() - 0.5) * 0.6;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctl = AnimationController(duration: const Duration(milliseconds: 800), vsync: this);
+    _scale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.4), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 1.4, end: 1.0), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.0), weight: 50),
+    ]).animate(_ctl);
+    _opacity = Tween(begin: 1.0, end: 0.0).animate(
+      CurvedAnimation(parent: _ctl, curve: const Interval(0.5, 1.0)),
+    );
+    _translateY = Tween(begin: 0.0, end: -120.0).animate(
+      CurvedAnimation(parent: _ctl, curve: Curves.easeOut),
+    );
+    _ctl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: widget.heart.x - 30,
+      top: widget.heart.y - 30,
+      child: AnimatedBuilder(
+        animation: _ctl,
+        builder: (context, child) {
+          return Transform.translate(
+            offset: Offset(0, _translateY.value),
+            child: Transform.rotate(
+              angle: _rotation,
+              child: Transform.scale(
+                scale: _scale.value,
+                child: Opacity(
+                  opacity: _opacity.value,
+                  child: const Icon(Icons.favorite, color: AppColors.primary, size: 60),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({required this.icon, required this.label, required this.onTap, this.highlight = false});
   final IconData icon;
   final String label;
   final VoidCallback onTap;
