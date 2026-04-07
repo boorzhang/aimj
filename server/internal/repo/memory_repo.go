@@ -219,6 +219,23 @@ func (r *memoryDramaRepo) GetEpisode(ctx context.Context, dramaID int64, ep int)
 	return nil, ErrNotFound
 }
 
+func (r *memoryDramaRepo) Stats(_ context.Context) (DramaStats, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var s DramaStats
+	for _, d := range r.dramas {
+		s.TotalDramas++
+		s.TotalHeat += d.Heat
+		if d.Status == 1 {
+			s.OnlineCount++
+		}
+	}
+	for _, eps := range r.episodes {
+		s.TotalEpisodes += len(eps)
+	}
+	return s, nil
+}
+
 func (r *memoryDramaRepo) CreateEpisodes(ctx context.Context, episodes []model.Episode) error {
 	if len(episodes) == 0 {
 		return nil

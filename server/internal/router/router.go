@@ -64,6 +64,7 @@ func Setup(cfg *config.Config, dramaH *handler.DramaHandler, userH *handler.User
 	)
 	{
 		admin.POST("/drama/upload", dramaH.Create)
+		admin.GET("/stats", dramaH.Stats)
 	}
 
 	return r

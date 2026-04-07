@@ -67,6 +67,15 @@ type EpisodePlay struct {
 	UnlockType   string `json:"unlockType"`
 }
 
+// Stats 概览统计
+func (s *DramaService) Stats(ctx context.Context) (*repo.DramaStats, error) {
+	stats, err := s.repo.Stats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &stats, nil
+}
+
 // Search 关键词搜索
 func (s *DramaService) Search(ctx context.Context, query string, limit int) ([]DramaListItem, error) {
 	list, err := s.repo.Search(ctx, query, limit)

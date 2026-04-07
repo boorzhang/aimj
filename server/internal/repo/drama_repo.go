@@ -38,4 +38,13 @@ type DramaRepo interface {
 	Episodes(ctx context.Context, dramaID int64) ([]model.Episode, error)
 	GetEpisode(ctx context.Context, dramaID int64, ep int) (*model.Episode, error)
 	CreateEpisodes(ctx context.Context, episodes []model.Episode) error
+	Stats(ctx context.Context) (DramaStats, error)
+}
+
+// DramaStats 概览统计
+type DramaStats struct {
+	TotalDramas   int   `json:"totalDramas"`
+	TotalEpisodes int   `json:"totalEpisodes"`
+	TotalHeat     int64 `json:"totalHeat"`
+	OnlineCount   int   `json:"onlineCount"`
 }

@@ -105,6 +105,18 @@ func (r *mysqlDramaRepo) GetEpisode(ctx context.Context, dramaID int64, ep int) 
 	return &e, nil
 }
 
+func (r *mysqlDramaRepo) Stats(ctx context.Context) (DramaStats, error) {
+	var s DramaStats
+	r.db.WithContext(ctx).Model(&model.Drama{}).Count(new(int64))
+	r.db.WithContext(ctx).Model(&model.Drama{}).Select("count(*) as total_dramas, coalesce(sum(heat),0) as total_heat").
+		Scan(&s)
+	r.db.WithContext(ctx).Model(&model.Drama{}).Where("status = 1").Count(new(int64)).Scan(&s.OnlineCount)
+	var epCount int64
+	r.db.WithContext(ctx).Model(&model.Episode{}).Count(&epCount)
+	s.TotalEpisodes = int(epCount)
+	return s, nil
+}
+
 func (r *mysqlDramaRepo) CreateEpisodes(ctx context.Context, episodes []model.Episode) error {
 	if len(episodes) == 0 {
 		return nil

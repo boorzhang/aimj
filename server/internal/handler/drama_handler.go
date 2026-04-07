@@ -22,6 +22,16 @@ func NewDramaHandler(svc *service.DramaService) *DramaHandler {
 	return &DramaHandler{svc: svc}
 }
 
+// Stats GET /api/v1/admin/stats
+func (h *DramaHandler) Stats(c *gin.Context) {
+	stats, err := h.svc.Stats(c.Request.Context())
+	if err != nil {
+		response.Internal(c, err.Error())
+		return
+	}
+	response.OK(c, stats)
+}
+
 // Search GET /api/v1/drama/search?q=
 func (h *DramaHandler) Search(c *gin.Context) {
 	q := c.Query("q")

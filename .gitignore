@@ -26,3 +26,5 @@ server/.env
 
 # macOS
 .DS_Store
+cms/node_modules/
+cms/dist/
