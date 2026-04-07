@@ -22,6 +22,22 @@ func NewDramaHandler(svc *service.DramaService) *DramaHandler {
 	return &DramaHandler{svc: svc}
 }
 
+// Search GET /api/v1/drama/search?q=
+func (h *DramaHandler) Search(c *gin.Context) {
+	q := c.Query("q")
+	if q == "" {
+		response.BadRequest(c, "missing query parameter 'q'")
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	result, err := h.svc.Search(c.Request.Context(), q, limit)
+	if err != nil {
+		response.Internal(c, err.Error())
+		return
+	}
+	response.OK(c, result)
+}
+
 // Feed GET /api/v1/drama/feed
 func (h *DramaHandler) Feed(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

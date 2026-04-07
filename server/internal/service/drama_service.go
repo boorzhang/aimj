@@ -67,6 +67,27 @@ type EpisodePlay struct {
 	UnlockType   string `json:"unlockType"`
 }
 
+// Search 关键词搜索
+func (s *DramaService) Search(ctx context.Context, query string, limit int) ([]DramaListItem, error) {
+	list, err := s.repo.Search(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]DramaListItem, 0, len(list))
+	for _, d := range list {
+		items = append(items, DramaListItem{
+			ID:           d.ID,
+			Title:        d.Title,
+			Cover:        s.coverURL(d.Cover),
+			Tags:         splitTags(d.Tags),
+			EpisodeCount: d.EpisodeCount,
+			UpdatedTo:    d.UpdatedTo,
+			Heat:         d.Heat,
+		})
+	}
+	return items, nil
+}
+
 // Feed 首页推荐流
 func (s *DramaService) Feed(ctx context.Context, page, pageSize int, category string) (FeedResult, error) {
 	r, err := s.repo.List(ctx, repo.ListDramaParams{

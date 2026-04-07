@@ -37,6 +37,7 @@ func Setup(cfg *config.Config, dramaH *handler.DramaHandler) *gin.Engine {
 		drama := v1.Group("/drama")
 		{
 			drama.GET("/feed", dramaH.Feed)
+			drama.GET("/search", dramaH.Search)
 			drama.GET("/:id", dramaH.Detail)
 			drama.GET("/:id/episode/:ep", dramaH.Episode)
 		}

@@ -51,6 +51,21 @@ func (r *mysqlDramaRepo) List(ctx context.Context, params ListDramaParams) (List
 	}, nil
 }
 
+func (r *mysqlDramaRepo) Search(ctx context.Context, query string, limit int) ([]model.Drama, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	var list []model.Drama
+	like := "%" + query + "%"
+	if err := r.db.WithContext(ctx).
+		Where("status = ? AND (title LIKE ? OR tags LIKE ?)", 1, like, like).
+		Order("heat DESC").Limit(limit).
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
 func (r *mysqlDramaRepo) GetByID(ctx context.Context, id int64) (*model.Drama, error) {
 	var d model.Drama
 	if err := r.db.WithContext(ctx).First(&d, id).Error; err != nil {

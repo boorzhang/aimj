@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -139,6 +140,29 @@ func (r *memoryDramaRepo) List(ctx context.Context, params ListDramaParams) (Lis
 		HasMore: end < len(filtered),
 		Total:   total,
 	}, nil
+}
+
+func (r *memoryDramaRepo) Search(ctx context.Context, query string, limit int) ([]model.Drama, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if limit <= 0 {
+		limit = 20
+	}
+	var results []model.Drama
+	q := strings.ToLower(query)
+	for _, d := range r.dramas {
+		if d.Status != 1 {
+			continue
+		}
+		if strings.Contains(strings.ToLower(d.Title), q) ||
+			strings.Contains(strings.ToLower(d.Tags), q) {
+			results = append(results, *d)
+			if len(results) >= limit {
+				break
+			}
+		}
+	}
+	return results, nil
 }
 
 func (r *memoryDramaRepo) GetByID(ctx context.Context, id int64) (*model.Drama, error) {

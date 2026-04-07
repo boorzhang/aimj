@@ -6,6 +6,7 @@ import '../../services/analytics_service.dart';
 import '../../services/feed_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/ad_feed_widget.dart';
+import '../../widgets/banner_carousel.dart';
 import '../../widgets/drama_card.dart';
 import '../../widgets/skeleton.dart';
 
@@ -18,8 +19,12 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _feedService = FeedService();
+  final _scrollCtl = ScrollController();
   final List<Drama> _dramas = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _page = 1;
 
   static const _categories = ['推荐', '男频', '女频', '悬疑', '科幻', '都市', '古风', '搞笑'];
   int _categoryIndex = 0;
@@ -28,24 +33,63 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _load();
+    _scrollCtl.addListener(_onScroll);
     AnalyticsService.instance.appLaunch();
   }
 
+  @override
+  void dispose() {
+    _scrollCtl.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_loadingMore || !_hasMore) return;
+    final max = _scrollCtl.position.maxScrollExtent;
+    final current = _scrollCtl.position.pixels;
+    if (current >= max - 300) {
+      _loadMore();
+    }
+  }
+
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _page = 1;
+    });
     try {
-      final result = await _feedService.getFeed();
+      final result = await _feedService.getFeed(page: 1);
       if (!mounted) return;
       setState(() {
         _dramas
           ..clear()
           ..addAll(result.list);
+        _hasMore = result.hasMore;
         _loading = false;
       });
     } catch (e) {
       debugPrint('[HomePage] feed error: $e');
       if (!mounted) return;
       setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    setState(() => _loadingMore = true);
+    try {
+      final nextPage = _page + 1;
+      final result = await _feedService.getFeed(page: nextPage);
+      if (!mounted) return;
+      setState(() {
+        _dramas.addAll(result.list);
+        _page = nextPage;
+        _hasMore = result.hasMore;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('[HomePage] loadMore error: $e');
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
     }
   }
 
@@ -56,9 +100,20 @@ class _HomePageState extends State<HomePage> {
         color: AppColors.primary,
         onRefresh: _load,
         child: CustomScrollView(
+          controller: _scrollCtl,
           slivers: [
             SliverToBoxAdapter(child: _buildHeader()),
-            SliverToBoxAdapter(child: _buildBanner()),
+            SliverToBoxAdapter(
+              child: _dramas.isEmpty
+                  ? _buildBannerPlaceholder()
+                  : BannerCarousel(
+                      dramas: _dramas.take(4).toList(),
+                      onTap: (d) {
+                        AnalyticsService.instance.dramaClick(d.id);
+                        context.push('/drama/${d.id}');
+                      },
+                    ),
+            ),
             SliverToBoxAdapter(child: _buildCategoryTabs()),
             if (_loading)
               SliverPadding(
@@ -112,6 +167,21 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ),
+              // 加载更多指示器
+              if (_loadingMore)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                  ),
+                ),
+              if (!_hasMore && _dramas.isNotEmpty)
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(child: Text('没有更多了', style: AppTextStyles.caption)),
+                  ),
+                ),
             ],
           ],
         ),
@@ -145,7 +215,7 @@ class _HomePageState extends State<HomePage> {
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.search, color: AppColors.textPrimary),
-            onPressed: () {},
+            onPressed: () => context.push('/search'),
           ),
           IconButton(
             icon: const Icon(Icons.card_giftcard, color: AppColors.accent),
@@ -156,7 +226,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildBanner() {
+  Widget _buildBannerPlaceholder() {
     return Container(
       height: 180,
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -172,7 +242,7 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('🔥 爆款推荐',
+            Text('AI短剧',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
             SizedBox(height: 6),
             Text('每日更新 · 追剧爽到飞起',

@@ -30,6 +30,7 @@ type ListDramaResult struct {
 // DramaRepo 剧集数据访问接口
 type DramaRepo interface {
 	List(ctx context.Context, params ListDramaParams) (ListDramaResult, error)
+	Search(ctx context.Context, query string, limit int) ([]model.Drama, error)
 	GetByID(ctx context.Context, id int64) (*model.Drama, error)
 	Create(ctx context.Context, drama *model.Drama) error
 
