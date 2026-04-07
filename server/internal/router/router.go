@@ -1,4 +1,3 @@
-// Package router 装配 HTTP 路由。
 package router
 
 import (
@@ -12,7 +11,13 @@ import (
 )
 
 // Setup 构造并返回 *gin.Engine
-func Setup(cfg *config.Config, dramaH *handler.DramaHandler, userH *handler.UserHandler) *gin.Engine {
+func Setup(
+	cfg *config.Config,
+	dramaH *handler.DramaHandler,
+	userH *handler.UserHandler,
+	recH *handler.RecommendHandler,
+	analyticsH *handler.AnalyticsHandler,
+) *gin.Engine {
 	if cfg.AppEnv == "prod" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -22,7 +27,6 @@ func Setup(cfg *config.Config, dramaH *handler.DramaHandler, userH *handler.User
 	r.Use(middleware.Recovery())
 	r.Use(middleware.CORS())
 
-	// 健康检查
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "ok",
@@ -31,25 +35,27 @@ func Setup(cfg *config.Config, dramaH *handler.DramaHandler, userH *handler.User
 		})
 	})
 
-	// 公开接口
+	optionalAuth := middleware.OptionalJWT(cfg.JWTSecret)
+
 	v1 := r.Group("/api/v1")
 	{
 		drama := v1.Group("/drama")
 		{
 			drama.GET("/feed", dramaH.Feed)
 			drama.GET("/search", dramaH.Search)
+			drama.GET("/recommend", optionalAuth, recH.Recommend)
 			drama.GET("/:id", dramaH.Detail)
 			drama.GET("/:id/episode/:ep", dramaH.Episode)
 		}
 
-		// 用户 - 登录（公开）
 		v1.POST("/user/login", userH.Login)
+
+		// 埋点上报（公开，无需登录）
+		v1.POST("/analytics/events", analyticsH.Report)
 	}
 
-	// 需要登录的接口
-	auth := r.Group("/api/v1",
-		middleware.JWT(cfg.JWTSecret, false),
-	)
+	// 需要登录
+	auth := r.Group("/api/v1", middleware.JWT(cfg.JWTSecret, false))
 	{
 		user := auth.Group("/user")
 		{
@@ -58,13 +64,12 @@ func Setup(cfg *config.Config, dramaH *handler.DramaHandler, userH *handler.User
 		}
 	}
 
-	// CMS 管理接口（需要 admin JWT）
-	admin := r.Group("/api/v1/admin",
-		middleware.JWT(cfg.JWTSecret, true),
-	)
+	// CMS 管理（admin JWT）
+	admin := r.Group("/api/v1/admin", middleware.JWT(cfg.JWTSecret, true))
 	{
 		admin.POST("/drama/upload", dramaH.Create)
 		admin.GET("/stats", dramaH.Stats)
+		admin.GET("/analytics", analyticsH.Summary)
 	}
 
 	return r

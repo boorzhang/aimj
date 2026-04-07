@@ -33,7 +33,7 @@ export default function Login() {
           AI短剧 CMS
         </Title>
         <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginBottom: 32 }}>
-          内容管理后台 · 测试验证码 1234
+          内容管理后台 · 账号 admin / 验证码 1234
         </Text>
         <Form layout="vertical" onFinish={onFinish}>
           <Form.Item name="phone" rules={[{ required: true, message: '请输入手机号' }]}>

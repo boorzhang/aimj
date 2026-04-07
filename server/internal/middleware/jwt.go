@@ -58,6 +58,30 @@ func JWT(secret string, requireAdmin bool) gin.HandlerFunc {
 	}
 }
 
+// OptionalJWT 可选鉴权：有 token 就解析注入，没有也放行。
+func OptionalJWT(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		auth := c.GetHeader("Authorization")
+		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
+			c.Next()
+			return
+		}
+		tokenStr := strings.TrimPrefix(auth, "Bearer ")
+		claims := &Claims{}
+		token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, jwt.ErrTokenUnverifiable
+			}
+			return []byte(secret), nil
+		})
+		if err == nil && token.Valid {
+			c.Set(ContextKeyUserID, claims.UserID)
+			c.Set(ContextKeyRole, claims.Role)
+		}
+		c.Next()
+	}
+}
+
 // IssueToken 签发 JWT（登录 / 注册 / CMS 登录调用）
 func IssueToken(secret string, userID int64, role string, expire time.Duration) (string, error) {
 	claims := Claims{

@@ -19,4 +19,8 @@ type UserRepo interface {
 
 	// AddCoins 增减金币（正数加，负数减），返回操作后余额
 	AddCoins(ctx context.Context, userID int64, delta int64, reason string) (balance int64, err error)
+
+	// 观看记录（用于推荐算法）
+	RecordWatch(ctx context.Context, userID int64, dramaID int64, episode int) error
+	WatchedDramaIDs(ctx context.Context, userID int64) ([]int64, error)
 }

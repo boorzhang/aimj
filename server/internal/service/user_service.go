@@ -78,7 +78,12 @@ func (s *UserService) Login(ctx context.Context, in LoginInput) (*LoginResult, e
 		return nil, err
 	}
 
-	token, err := middleware.IssueToken(s.jwtSecret, user.ID, "user", s.jwtExpire)
+	// admin 手机号特殊处理，签发 admin role
+	role := "user"
+	if in.Phone == "admin" {
+		role = "admin"
+	}
+	token, err := middleware.IssueToken(s.jwtSecret, user.ID, role, s.jwtExpire)
 	if err != nil {
 		return nil, err
 	}

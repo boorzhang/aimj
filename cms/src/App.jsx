@@ -4,10 +4,12 @@ import {
   VideoCameraOutlined,
   PlusCircleOutlined,
   LoginOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 
+import Analytics from './pages/Analytics';
 import Dashboard from './pages/Dashboard';
 import DramaList from './pages/DramaList';
 import DramaForm from './pages/DramaForm';
@@ -29,6 +31,7 @@ function AppLayout() {
     { key: '/', icon: <DashboardOutlined />, label: '数据看板' },
     { key: '/dramas', icon: <VideoCameraOutlined />, label: '剧集管理' },
     { key: '/dramas/new', icon: <PlusCircleOutlined />, label: '新建剧集' },
+    { key: '/analytics', icon: <BarChartOutlined />, label: '埋点看板' },
   ];
 
   const handleLogout = () => {
@@ -69,6 +72,7 @@ function AppLayout() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/dramas" element={<DramaList />} />
             <Route path="/dramas/new" element={<DramaForm />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/login" element={<Login />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

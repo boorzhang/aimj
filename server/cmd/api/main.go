@@ -1,9 +1,3 @@
-// Command api 启动 AI短剧 APP 后端服务。
-//
-// 用法：
-//
-//	cp .env.example .env
-//	go run ./cmd/api
 package main
 
 import (
@@ -22,7 +16,6 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// 根据 DATA_SOURCE 选择数据层实现
 	var dramaRepo repo.DramaRepo
 	var userRepo repo.UserRepo
 	switch cfg.DataSource {
@@ -33,7 +26,7 @@ func main() {
 		}
 		log.Println("[main] mysql connected")
 		dramaRepo = repo.NewMySQLDramaRepo(db)
-		userRepo = repo.NewMemoryUserRepo() // TODO: MySQL user repo
+		userRepo = repo.NewMemoryUserRepo()
 	default:
 		log.Println("[main] running with in-memory mock repo")
 		dramaRepo = repo.NewMemoryDramaRepo()
@@ -46,7 +39,13 @@ func main() {
 	userSvc := service.NewUserService(userRepo, cfg.JWTSecret, cfg.JWTExpire)
 	userH := handler.NewUserHandler(userSvc)
 
-	r := router.Setup(cfg, dramaH, userH)
+	recSvc := service.NewRecommendService(dramaRepo, userRepo, cfg.CDNBase)
+	recH := handler.NewRecommendHandler(recSvc)
+
+	analyticsSvc := service.NewAnalyticsService()
+	analyticsH := handler.NewAnalyticsHandler(analyticsSvc)
+
+	r := router.Setup(cfg, dramaH, userH, recH, analyticsH)
 
 	addr := ":" + cfg.AppPort
 	log.Printf("[main] server listening on %s", addr)

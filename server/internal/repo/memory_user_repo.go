@@ -11,9 +11,10 @@ import (
 // NewMemoryUserRepo 构造内存 mock 用户 repo
 func NewMemoryUserRepo() UserRepo {
 	return &memoryUserRepo{
-		users:   make(map[int64]*model.User),
-		phones:  make(map[string]int64),
-		signIns: make(map[int64]signInRecord),
+		users:    make(map[int64]*model.User),
+		phones:   make(map[string]int64),
+		signIns:  make(map[int64]signInRecord),
+		watches:  make(map[int64][]int64),
 	}
 }
 
@@ -27,6 +28,7 @@ type memoryUserRepo struct {
 	users   map[int64]*model.User
 	phones  map[string]int64 // phone -> userID
 	signIns map[int64]signInRecord
+	watches map[int64][]int64 // userID -> dramaIDs (去重有序)
 	nextID  int64
 }
 
@@ -121,4 +123,26 @@ func (r *memoryUserRepo) AddCoins(_ context.Context, userID int64, delta int64, 
 		u.Coins = 0
 	}
 	return u.Coins, nil
+}
+
+func (r *memoryUserRepo) RecordWatch(_ context.Context, userID int64, dramaID int64, _ int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ids := r.watches[userID]
+	for _, id := range ids {
+		if id == dramaID {
+			return nil // 已记录
+		}
+	}
+	r.watches[userID] = append(ids, dramaID)
+	return nil
+}
+
+func (r *memoryUserRepo) WatchedDramaIDs(_ context.Context, userID int64) ([]int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ids := r.watches[userID]
+	out := make([]int64, len(ids))
+	copy(out, ids)
+	return out, nil
 }

@@ -53,6 +53,9 @@ export const createDrama = (payload) =>
 export const getStats = () =>
   request('/api/v1/admin/stats');
 
+export const getAnalytics = () =>
+  request('/api/v1/admin/analytics');
+
 // 启动时恢复 token
 const saved = localStorage.getItem('admin_token');
 if (saved) adminToken = saved;
