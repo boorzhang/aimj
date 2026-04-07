@@ -17,6 +17,7 @@ import '../../services/storage/local_store.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/episode_selector.dart';
 import '../../widgets/reward_dialog.dart';
+import '../../widgets/share_poster.dart';
 
 /// 播放页 - 抖音/红果风格上下滑切集
 class PlayerPage extends StatefulWidget {
@@ -508,7 +509,13 @@ class _PlayerPageState extends State<PlayerPage> {
           IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => context.pop()),
           Expanded(child: Text('第 $_currentEp 集', style: const TextStyle(color: Colors.white, fontSize: 16))),
           IconButton(icon: const Icon(Icons.favorite_border, color: Colors.white), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.share, color: Colors.white), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.share, color: Colors.white), onPressed: () {
+            final d = _drama;
+            if (d != null) {
+              _controller?.pause();
+              ShareSheet.show(context, d, episode: _currentEp);
+            }
+          }),
         ],
       ),
     );
@@ -530,6 +537,11 @@ class _PlayerPageState extends State<PlayerPage> {
           _ActionButton(icon: Icons.comment_outlined, label: '评论', onTap: () {}),
           _ActionButton(icon: Icons.share_outlined, label: '分享', onTap: () {
             AnalyticsService.instance.shareDrama(widget.dramaId);
+            final d = _drama;
+            if (d != null) {
+              _controller?.pause();
+              ShareSheet.show(context, d, episode: _currentEp);
+            }
           }),
         ],
       ),

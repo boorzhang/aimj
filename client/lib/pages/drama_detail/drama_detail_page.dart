@@ -6,6 +6,7 @@ import '../../services/drama_service.dart';
 import '../../services/storage/local_store.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/episode_selector.dart';
+import '../../widgets/share_poster.dart';
 
 class DramaDetailPage extends StatefulWidget {
   const DramaDetailPage({super.key, required this.dramaId});
@@ -77,7 +78,13 @@ class _DramaDetailPageState extends State<DramaDetailPage> {
                       ),
                       onPressed: _toggleFavorite,
                     ),
-                    IconButton(icon: const Icon(Icons.share), onPressed: () {}),
+                    IconButton(
+                      icon: const Icon(Icons.share),
+                      onPressed: () {
+                        final d = _drama;
+                        if (d != null) ShareSheet.show(context, d);
+                      },
+                    ),
                   ],
                 ),
                 SliverToBoxAdapter(child: _buildInfo(drama)),
