@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../services/auth/auth_service.dart';
 import '../../theme/app_theme.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
   static const _items = <_MenuItem>[
@@ -12,14 +14,16 @@ class ProfilePage extends StatelessWidget {
     _MenuItem(icon: Icons.download_outlined, label: '下载缓存'),
     _MenuItem(icon: Icons.monetization_on_outlined, label: '我的金币'),
     _MenuItem(icon: Icons.workspace_premium_outlined, label: '免广告会员'),
-    _MenuItem(icon: Icons.redeem_outlined, label: '兑换码'),
     _MenuItem(icon: Icons.settings_outlined, label: '系统设置'),
     _MenuItem(icon: Icons.privacy_tip_outlined, label: '隐私协议'),
     _MenuItem(icon: Icons.article_outlined, label: '用户协议'),
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    final user = auth.user;
+
     return SafeArea(
       child: ListView(
         children: [
@@ -27,22 +31,51 @@ class ProfilePage extends StatelessWidget {
           Center(
             child: Column(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 40,
-                  backgroundColor: AppColors.card,
-                  child: Icon(Icons.person, size: 40, color: AppColors.textSecondary),
+                  backgroundColor: auth.loggedIn ? AppColors.primary.withValues(alpha: 0.2) : AppColors.card,
+                  child: Icon(
+                    auth.loggedIn ? Icons.person : Icons.person_outline,
+                    size: 40,
+                    color: auth.loggedIn ? AppColors.primary : AppColors.textSecondary,
+                  ),
                 ),
                 const SizedBox(height: 12),
-                const Text('未登录',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    )),
-                TextButton(
-                  onPressed: () {},
-                  child: const Text('点击登录', style: TextStyle(color: AppColors.primary)),
+                Text(
+                  auth.loggedIn ? (user?.nickname ?? '用户') : '未登录',
+                  style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+                if (auth.loggedIn && user != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.monetization_on, size: 16, color: AppColors.accent),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${user.coins} 金币',
+                        style: const TextStyle(color: AppColors.accent, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 4),
+                if (!auth.loggedIn)
+                  TextButton(
+                    onPressed: () => context.push('/login'),
+                    child: const Text('点击登录', style: TextStyle(color: AppColors.primary)),
+                  )
+                else
+                  TextButton(
+                    onPressed: () async {
+                      await ref.read(authProvider.notifier).logout();
+                    },
+                    child: const Text('退出登录', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  ),
               ],
             ),
           ),

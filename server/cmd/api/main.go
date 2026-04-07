@@ -24,6 +24,7 @@ func main() {
 
 	// 根据 DATA_SOURCE 选择数据层实现
 	var dramaRepo repo.DramaRepo
+	var userRepo repo.UserRepo
 	switch cfg.DataSource {
 	case "mysql":
 		db, err := gorm.Open(mysql.Open(cfg.MySQLDSN), &gorm.Config{})
@@ -32,15 +33,20 @@ func main() {
 		}
 		log.Println("[main] mysql connected")
 		dramaRepo = repo.NewMySQLDramaRepo(db)
+		userRepo = repo.NewMemoryUserRepo() // TODO: MySQL user repo
 	default:
 		log.Println("[main] running with in-memory mock repo")
 		dramaRepo = repo.NewMemoryDramaRepo()
+		userRepo = repo.NewMemoryUserRepo()
 	}
 
 	dramaSvc := service.NewDramaService(dramaRepo, cfg.CDNBase)
 	dramaH := handler.NewDramaHandler(dramaSvc)
 
-	r := router.Setup(cfg, dramaH)
+	userSvc := service.NewUserService(userRepo, cfg.JWTSecret, cfg.JWTExpire)
+	userH := handler.NewUserHandler(userSvc)
+
+	r := router.Setup(cfg, dramaH, userH)
 
 	addr := ":" + cfg.AppPort
 	log.Printf("[main] server listening on %s", addr)

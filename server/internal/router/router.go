@@ -12,7 +12,7 @@ import (
 )
 
 // Setup 构造并返回 *gin.Engine
-func Setup(cfg *config.Config, dramaH *handler.DramaHandler) *gin.Engine {
+func Setup(cfg *config.Config, dramaH *handler.DramaHandler, userH *handler.UserHandler) *gin.Engine {
 	if cfg.AppEnv == "prod" {
 		gin.SetMode(gin.ReleaseMode)
 	}
@@ -40,6 +40,21 @@ func Setup(cfg *config.Config, dramaH *handler.DramaHandler) *gin.Engine {
 			drama.GET("/search", dramaH.Search)
 			drama.GET("/:id", dramaH.Detail)
 			drama.GET("/:id/episode/:ep", dramaH.Episode)
+		}
+
+		// 用户 - 登录（公开）
+		v1.POST("/user/login", userH.Login)
+	}
+
+	// 需要登录的接口
+	auth := r.Group("/api/v1",
+		middleware.JWT(cfg.JWTSecret, false),
+	)
+	{
+		user := auth.Group("/user")
+		{
+			user.GET("/me", userH.Me)
+			user.POST("/sign-in", userH.SignIn)
 		}
 	}
 

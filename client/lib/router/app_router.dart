@@ -5,6 +5,7 @@ import '../pages/category/category_page.dart';
 import '../pages/drama_detail/drama_detail_page.dart';
 import '../pages/favorites/favorites_page.dart';
 import '../pages/history/history_page.dart';
+import '../pages/login/login_page.dart';
 import '../pages/home/home_page.dart';
 import '../pages/search/search_page.dart';
 import '../pages/player/player_page.dart';
@@ -59,6 +60,11 @@ class AppRouter {
           final id = int.tryParse(state.pathParameters['id'] ?? '0') ?? 0;
           return DramaDetailPage(dramaId: id);
         },
+      ),
+      GoRoute(
+        path: '/login',
+        name: 'login',
+        builder: (_, __) => const LoginPage(),
       ),
       GoRoute(
         path: '/search',
