@@ -1,0 +1,28 @@
+# Flutter
+client/build/
+client/.dart_tool/
+client/.packages
+client/.flutter-plugins
+client/.flutter-plugins-dependencies
+client/ios/Pods/
+client/ios/.symlinks/
+client/macos/Pods/
+client/macos/.symlinks/
+client/macos/Flutter/ephemeral/
+client/ios/Flutter/ephemeral/
+client/web/
+*.lock
+
+# Go
+server/server
+server/.env
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*~
+
+# macOS
+.DS_Store
